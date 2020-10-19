@@ -1,0 +1,41 @@
+#!/bin/bash -
+
+# Based on https://unix.stackexchange.com/a/299659/29716 by Stéphane Chazelas
+# License: https://creativecommons.org/licenses/by-sa/3.0/
+
+# use with annotate-output (modified) to get dates
+# spliterr annotate-outputk ./output.sh
+
+tmpdir=$(mktemp -d) || exit
+trap 'rm -rf "$tmpdir"' EXIT INT TERM HUP
+
+FIFO=$tmpdir/FIFO
+mkfifo "$FIFO" || exit
+
+conf=$tmpdir/conf
+
+cat > "$conf" << 'EOF' || exit
+bindkey "^C" quit
+split -h
+focus
+screen -t stderr sh -c 'tty > "$FIFO"; read done < "$FIFO"'
+focus
+screen -t stdout sh -c 'read tty < "$FIFO"; eval "$CMD" 2> "$tty"; echo "[Command exited with status $?, press enter to exit]"; read prompt; echo done > "$FIFO"'
+EOF
+
+CMD="$*"
+export FIFO CMD
+
+screen -mc "$conf"
+
+# Test with
+# 
+# #!/bin/bash
+# for i in `seq 1 100`; do
+#   if [ $(($RANDOM % 2)) -eq 1 ];then
+#     echo "$i"
+#   else
+#     echo "$i" >&2
+#   fi
+#   sleep 0.3
+# done

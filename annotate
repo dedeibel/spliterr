@@ -1,0 +1,96 @@
+#!/bin/bash -i
+
+# Based on https://unix.stackexchange.com/a/290715/29716 by coffeMug
+# License: https://creativecommons.org/licenses/by-sa/3.0/
+
+# readonly col=150 # column to start error output 
+col=$(($COLUMNS / 2))
+FMT="+%H:%M:%S"
+SHOW_TIME=1
+
+function usage() {
+  echo "$0 -n | -n | -f DATE_FORMAT"
+}
+
+while [ "$1" ]; do
+	case "$1" in
+	-n)
+    SHOW_TIME=0
+    shift
+    break
+  ;;
+	-f)
+		FMT="$2"
+		shift
+		shift
+    break;
+		;;
+	-h|-help|--help)
+		usage
+		exit 0
+		;;
+	*)
+		break
+		;;
+	esac
+done
+
+if [ $# -lt 1 ]; then
+	usage
+	exit 1
+fi
+
+date "${FMT}" > /dev/null || exit 2
+
+prefix ()
+{
+  if [ $SHOW_TIME -eq 1 ];then
+    date "${FMT}: "
+  fi
+}
+
+add_out ()
+{
+    while IFS= read -r line; do
+        p=$(prefix)
+        echo "${p}$line"
+    done
+    if [ ! -z "$line" ]; then
+        p=$(prefix)
+        echo -n "${p}$line"
+    fi
+}
+
+add_err ()
+{
+    while IFS= read -r line; do
+        p=$(prefix)
+        printf "%*s %s%s%s\n" $col "|" "$p" "$line"
+    done
+    if [ ! -z "$line" ]; then
+        p=$(prefix)
+        printf "%*s %s%s" $col "$p" "$line"
+    fi
+}
+
+cleanup() { __st=$?; rm -rf "$tmp"; exit $__st; }
+trap cleanup 0
+trap 'exit $?' 1 2 13 15
+
+tmp=$(mktemp -d --tmpdir annotate.XXXXXX) || exit 1
+OUT=$tmp/out
+ERR=$tmp/err
+
+mkfifo $OUT $ERR || exit 1
+
+add_out < $OUT &
+add_err < $ERR &
+
+echo "I: Started $@"
+"$@" > $OUT 2> $ERR ; EXIT=$?
+rm -f $OUT $ERR
+wait
+
+echo "I: Finished with exitcode $EXIT"
+
+exit $EXIT
